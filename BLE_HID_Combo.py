@@ -28,19 +28,6 @@ F_READ_NOTIFY = bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY
 ATT_F_READ = 0x01
 ATT_F_WRITE = 0x02
 
-# 建立伺服器
-hid_service = (
-    UUID(0x1812),  # Human Interface Device            人機介面設備
-    (
-        (UUID(0x2A4A), F_READ),  # HID information     HID信息
-        (UUID(0x2A4B), F_READ),  # HID report map      HID報告圖
-        (UUID(0x2A4C), F_WRITE),  # HID control point  HID控制點
-        (UUID(0x2A4D), F_READ_NOTIFY, ((UUID(0x2908), ATT_F_READ),)),  # HID report / reference
-        (UUID(0x2A4D), F_READ_WRITE, ((UUID(0x2908), ATT_F_READ),)),  # HID report / reference
-        (UUID(0x2A4E), F_READ_WRITE),  # HID protocol mode
-    ),
-)
-
 # fmt: off
 HID_REPORT_MAP = bytes([
     0x05, 0x01,     # Usage Page (Generic Desktop)
@@ -76,20 +63,57 @@ HID_REPORT_MAP = bytes([
     0x29, 0x65,     #     Usage Maximum (101)
     0x81, 0x00,     #     Input (Data, Array); Key array (6 bytes)
     0xC0,           # End Collection
+    #here-----把鍵盤和多媒體的 HID_REPORT_MAP 並在一起
+    0x05, 0x0C,     # Usage Page (CONSUMER PAGE)
+    0x09, 0x01,     # Usage (Consumer Control)
+    0xA1, 0x01,     # Collection (Application)
+    0x85, 0x02,     #     here Report ID (2)
+    0x75, 0x10,     #     Report Size (16)
+    0x95, 0x01,     #     Report Count (1)
+    0x15, 0x01,     #     Logical Minimum (0)
+    0x26,
+    0x8C, 0x02,     #     Logical Maximum (1)
+    0x19, 0x01,     #     Usage Minimum (224)
+    0x2A,
+    0x8C, 0x02,     #     Usage Maximum (231)
+    0x81, 0x00,     #     Input (Data, Variable, Absolute); Modifier byte
+    0xC0,           # End Collection
 ])
 # fmt: on
+
+# 建立伺服器
+hid_service = (
+    UUID(0x1812),  # Human Interface Device            人機介面設備
+    (
+        (UUID(0x2A4A), F_READ),  # HID information     HID信息
+        (UUID(0x2A4B), F_READ),  # HID report map      HID報告圖
+        (UUID(0x2A4C), F_WRITE),  # HID control point  HID控制點
+        (UUID(0x2A4D), F_READ_NOTIFY, (
+            (UUID(0x2908), ATT_F_READ),)
+        ),  # Keyboard HID report / reference
+        (UUID(0x2A4D), F_READ_WRITE, (
+            (UUID(0x2908), ATT_F_READ),)
+        ),  # Keyboard status HID report / reference
+        (UUID(0x2A4D), F_READ_NOTIFY, (
+            (UUID(0x2908), ATT_F_READ),)
+        ),  # here Consumer Control HID report / reference
+        (UUID(0x2A4E), F_READ_WRITE),  # HID protocol mode
+    ),
+)
 
 # register services  註冊服務
 ble.config(gap_name="MP-keyboard")
 handles = ble.gatts_register_services((hid_service,))
 print(handles)
-h_info, h_hid, _, h_rep, h_d1, _, h_d2, h_proto = handles[0]
+#here 多了 h_com 和 h_d3
+h_info, h_hid, _, h_rep, h_d1, _, h_d2, h_com, h_d3, h_proto = handles[0]
 
 # set initial data
 ble.gatts_write(h_info, b"\x01\x01\x00\x02")  # HID info: ver=1.1, country=0, flags=normal
 ble.gatts_write(h_hid, HID_REPORT_MAP)  # HID report map
 ble.gatts_write(h_d1, struct.pack("<BB", 1, 1))  # report: id=1, type=input
 ble.gatts_write(h_d2, struct.pack("<BB", 1, 2))  # report: id=1, type=output
+ble.gatts_write(h_d3, struct.pack("<BB", 2, 1))  #here  report: id=2, type=input
 ble.gatts_write(h_proto, b"\x01")  # protocol mode: report
 
 # advertise 廣告
@@ -104,6 +128,14 @@ ble.gap_advertise(100_000, adv)
 
 # once connected use the following to send reports
 
+# 可以查看以下對照表
+# https://circuitpython.readthedocs.io/projects/hid/en/latest/_modules/adafruit_hid/keycode.html
+# https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf
+def send_keycode(mod, code):
+    # here press the key, 控制鍵盤用 h_rep
+    ble.gatts_notify(conn_handle, h_rep, struct.pack("8B", mod, 0, code, 0, 0, 0, 0, 0))
+    # release the key
+    ble.gatts_notify(conn_handle, h_rep, b"\x00\x00\x00\x00\x00\x00\x00\x00")
 
 def send_char(char):
     if char == " ":
@@ -117,38 +149,45 @@ def send_char(char):
         code = 0x04 + ord(char) - ord("A")
     else:
         assert 0
-
-    ble.gatts_notify(conn_handle, h_rep, struct.pack("8B", mod, 0, code, 0, 0, 0, 0, 0))
-    ble.gatts_notify(conn_handle, h_rep, b"\x00\x00\x00\x00\x00\x00\x00\x00")
+    send_keycode(mod, code)
+    #     ble.gatts_notify(conn_handle, h_rep, struct.pack("8B", mod, 0, code, 0, 0, 0, 0, 0))
+    #     ble.gatts_notify(conn_handle, h_rep, b"\x00\x00\x00\x00\x00\x00\x00\x00")
 
 
 def send_str(st):
     for c in st:
         send_char(c)
 
-# 可以查看以下對照表
-# https://circuitpython.readthedocs.io/projects/hid/en/latest/_modules/adafruit_hid/keycode.html
-# https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf
-def screen_shot():   # 0x28:ENTER    0x46:Print Scrn
-    mod = 0
-    code = 0x46
-    ble.gatts_notify(conn_handle, h_rep, struct.pack("8B", mod, 0, code, 0, 0, 0, 0, 0))
-    ble.gatts_notify(conn_handle, h_rep, b"\x00\x00\x00\x00\x00\x00\x00\x00")
-#     send_str("hello")
+def send_media_code(code):   # 0x28:ENTER    0x46:Print Scrn
+    # here 控制音量用 h_com
+    ble.gatts_notify(conn_handle, h_com, struct.pack("2B", code, 0x00))
+    ble.gatts_notify(conn_handle, h_com, b"\x00\x00")
 
+def vol_inc():
+    send_media_code(0xE9)
+
+def vol_dec():
+    send_media_code(0xEA)
+
+def screen_shot():   # 0x28:ENTER    0x46:Print Scrn
+    send_keycode(0, 0x46)
 
 from machine import Pin
 import time
 
-sta = False   # 是否按下按鈕
+b12_prev = True   # 是否按下按鈕
+b13_prev = True   # 是否按下按鈕
 
-button = Pin(12, Pin.IN, Pin.PULL_UP)
+b12 = Pin(12, Pin.IN, Pin.PULL_UP)
+b13 = Pin(13, Pin.IN, Pin.PULL_UP)
 while True:
-    bv = button.value()
-    if bv == 1:
-        sta = False
-    if(bv == 0 and sta == False):
+    if b12_prev and (not b12.value()):
         screen_shot()
-        print("傳送")
-        sta = True
-    time.sleep(0.01)
+        print("截圖")
+    b12_prev = b12.value()
+    if b13_prev and (not b13.value()):
+        vol_inc()
+        print("大聲 ")
+    b13_prev = b13.value()
+    
+    time.sleep(0.05)
