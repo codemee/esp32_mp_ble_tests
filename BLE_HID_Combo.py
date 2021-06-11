@@ -133,7 +133,7 @@ print(handles)
 # 依序對應到服務中定義的特徵與描述器
 h_info, h_map, _, h_rep, h_d1, _, _, h_d2, h_com, h_d3, h_proto = handles[0]
 h_pnp, h_manu = handles[1]
-h_bat, _, h_fmt = handles[2]
+h_bat, h_bat_d, h_fmt = handles[2]
 
 # set initial data
 # HID info: ver=1.11, country=0, flags=normal
@@ -147,6 +147,7 @@ ble.gatts_write(h_proto, b"\x01")  # protocol mode: report (0 for boot mode)
 # format:UINT8
 ble.gatts_write(h_fmt, b'\x04\x00\xad\x27\x01\x00\x00') 
 ble.gatts_write(h_bat, b"\x64")  # battery level, always 100%
+ble.gatts_write(h_bat_d, b'\x00\x00')
 
 # vendor id source 0x01 -> Bluetooth company identify
 # vendor id 0x02E5 -> Expressif
