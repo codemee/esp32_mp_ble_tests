@@ -89,15 +89,15 @@ hid_service = (                                   # 服務
         (UUID(0x2A4A), F_READ),                     # HID information
         (UUID(0x2A4B), F_READ),                     # HID report map
         (UUID(0x2A4C), F_WRITE),                    # HID control point
-        (UUID(0x2A4D), F_READ_NOTIFY, (             # Input report
+        (UUID(0x2A4D), F_READ_NOTIFY, (             # Report(input)
             (UUID(0x2908), ATT_F_READ),               # Report reference
             # Client Characteristic Configuration
             (UUID(0x2902), ATT_F_READ),
         )),
-        (UUID(0x2A4D), F_READ_WRITE_NORESPONSE, (   # Output report
+        (UUID(0x2A4D), F_READ_WRITE_NORESPONSE, (   # Report(output)
             (UUID(0x2908), ATT_F_READ),               # Report reference
         )),
-        (UUID(0x2A4D), F_READ_NOTIFY, (             # Consumer Control report
+        (UUID(0x2A4D), F_READ_NOTIFY, (             # Report(comsumer control)
             (UUID(0x2908), ATT_F_READ),               # Report reference
         )),
         (UUID(0x2A4E), F_READ_WRITE),               # HID protocol mode
@@ -106,8 +106,8 @@ hid_service = (                                   # 服務
 
 devinfo_service = (
     UUID(0x180a), (                               # device info service
-        (UUID(0x2a50), F_READ),                     # pnp Char
-        (UUID(0x2a29), F_READ),                     # manufacture name Char
+        (UUID(0x2a50), F_READ),                     # PnP ID
+        (UUID(0x2a29), F_READ),                     # Manufacturer Name String
     ),
 )
 
@@ -132,7 +132,7 @@ handles = ble.gatts_register_services((
 print(handles)
 # 依序對應到服務中定義的特徵與描述器
 h_info, h_map, _, h_rep, h_d1, _, _, h_d2, h_com, h_d3, h_proto = handles[0]
-h_dev, h_manu = handles[1]
+h_pnp, h_manu = handles[1]
 h_bat, _, h_fmt = handles[2]
 
 # set initial data
@@ -152,15 +152,15 @@ ble.gatts_write(h_bat, b"\x64")  # battery level, always 100%
 # vendor id 0x02E5 -> Expressif
 # Product id 0xA111 -> the ESP32BleKyboard lib's prod id
 # product version 0x0210 -> V2.1.0
-ble.gatts_write(h_dev, b'\x01\xe5\x02\x11\xa1\x10\x02')
+ble.gatts_write(h_pnp, b'\x01\xe5\x02\x11\xa1\x10\x02')
 ble.gatts_write(h_manu, b'Espressif')
 
-# advertise 廣告封包, 長度最多 32 bytes
+# advertise 廣告封包, 長度最多 31 bytes
 # https://docs.silabs.com/bluetooth/latest/general/adv-and-scanning/bluetooth-adv-data-basics
 adv = (
-    b"\x02\x01\x06"        # flag: 0x1010,
-    b"\x03\x03\x12\x18"    # complete list of 16-bit service UUIDs: 0x1812
-    b"\x03\x19\xc1\x03"    # appearance: keyboard
+    b"\x02\x01\x06"         # flag: 0x0110,
+    b"\x03\x03\x12\x18"     # complete list of 16-bit service UUIDs: 0x1812
+    b"\x03\x19\xc1\x03"     # appearance: keyboard
     b"\x0c\x09MP-keyboard"  # complete local name(要與上面的gap_name一樣)
 )
 conn_handle = None
